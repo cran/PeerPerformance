@@ -19,17 +19,22 @@
   liststocks <- c(1:nrow(YY))[rowSums(YY) > ctr$minObsPi]
   
   if (length(liststocks) > 1) {
-    cl <- snow::makeCluster(c(rep("localhost", ctr$nCore)), type = "SOCK")
+    #cl <- snow::makeCluster(c(rep("localhost", ctr$nCore)), type = "SOCK")
+    cl <- parallel::makeCluster(ctr$nCore)
     
     # if (ctr$hac){ snow::clusterEvalQ(cl, require('sandwich'))
     # snow::clusterEvalQ(cl, require('lmtest')) }
     
     liststocks <- liststocks[1:(length(liststocks) - 1)]
     
-    z <- snow::clusterApply(cl = cl, x = as.list(liststocks), fun = alphaScreeningi, 
-                            rdata = X, factors = factors, T = T, N = N, hac = ctr$hac)
+    #z <- snow::clusterApply(cl = cl, x = as.list(liststocks), fun = alphaScreeningi, 
+    #                        rdata = X, factors = factors, T = T, N = N, hac = ctr$hac)
     
-    snow::stopCluster(cl)
+    z <- parallel::clusterApplyLB(cl = cl, x = as.list(liststocks), fun = alphaScreeningi,
+                                  rdata = X, factors = factors, T = T, N = N, hac = ctr$hac)
+    
+    #snow::stopCluster(cl)
+    parallel::stopCluster(cl)
     
     for (i in 1:length(liststocks)) {
       out <- z[[i]]
@@ -127,7 +132,7 @@
 #' \code{pineg}: Vector (of length \eqn{N}) of probability of underperformance
 #' performance.
 #' @note Further details on the methdology with an application to the hedge
-#' fund industry is given in Ardia and Boudt (2016). 
+#' fund industry is given in Ardia and Boudt (2018). 
 #' 
 #' Application of the false discovery rate approach applied to the mutual fund
 #' industry has been presented in Barras, Scaillet and Wermers (2010).
@@ -143,10 +148,10 @@
 #' \emph{Finance Research Letters} \bold{13}, pp.97--104. 
 #' \doi{10.1016/j.frl.2015.02.008}
 #' 
-#' Ardia, D., Boudt, K. (2016).  
+#' Ardia, D., Boudt, K. (2018).  
 #' The Peer Ratios Performance of Hedge Funds. 
-#' \emph{Working paper}.
-#' \doi{10.2139/ssrn.2000901}
+#' \emph{Journal of Banking and Finance} \bold{87}, pp.351-.368.
+#' \doi{10.1016/j.jbankfin.2017.10.014}
 #' 
 #' Barras, L., Scaillet, O., Wermers, R. (2010).  
 #' False discoveries in mutual fund performance: Measuring luck in estimated alphas.  
@@ -191,7 +196,7 @@
 #' ctr = list(nCore = 1, hac = TRUE)
 #' alphaScreening(rets, control = ctr)
 #' @export
-#' @importFrom snow makeCluster clusterEvalQ clusterApply stopCluster
+#' @importFrom parallel makeCluster clusterApplyLB stopCluster
 #' @importFrom compiler cmpfun
 alphaScreening <- compiler::cmpfun(.alphaScreening)
 

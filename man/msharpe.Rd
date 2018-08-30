@@ -41,9 +41,6 @@ print(out)
 out = msharpe(hfdata, na.rm = FALSE)
 print(out)
 }
-\author{
-David Ardia and Kris Boudt.
-}
 \references{
 Ardia, D., Boudt, K. (2015).  
 Testing equality of modified Sharpe ratios.
@@ -69,5 +66,7 @@ Risk-adjusted performance of funds of hedge funds using a modified Sharpe ratio.
 \code{\link{msharpeTesting}}, \code{\link{msharpeScreening}} and
 \code{\link{sharpe}}.
 }
+\author{
+David Ardia and Kris Boudt.
+}
 \keyword{htest}
-

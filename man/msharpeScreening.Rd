@@ -93,7 +93,7 @@ the ratios. Default: \code{minObs = 10}.
 }
 \note{
 Further details on the methdology with an application to the hedge
-fund industry is given in in Ardia and Boudt (2016). 
+fund industry is given in in Ardia and Boudt (2018). 
 
 Some internal functions where adapted from Wolf's R code.
 
@@ -111,19 +111,16 @@ msharpeScreening(rets, control = list(nCore = 1))
 ## Modified Sharpe screening with bootstrap and HAC standard deviation
 msharpeScreening(rets, control = list(nCore = 1, type = 2, hac = TRUE))
 }
-\author{
-David Ardia and Kris Boudt.
-}
 \references{
 Ardia, D., Boudt, K. (2015).  
 Testing equality of modified Sharpe ratios.
 \emph{Finance Research Letters} \bold{13}, pp.97--104. 
 \doi{10.1016/j.frl.2015.02.008}
 
-Ardia, D., Boudt, K. (2016).  
+Ardia, D., Boudt, K. (2018).  
 The Peer Ratios Performance of Hedge Funds. 
-\emph{Working paper}.
-\doi{10.2139/ssrn.2000901}
+\emph{Journal of Banking and Finance} \bold{87}, pp.351-.368.
+\doi{10.1016/j.jbankfin.2017.10.014}
 
 Barras, L., Scaillet, O., Wermers, R. (2010).  
 False discoveries in mutual fund performance: Measuring luck in estimated alphas.  
@@ -153,5 +150,7 @@ A direct approach to false discovery rates.
 \code{\link{msharpe}}, \code{\link{msharpeTesting}},
 \code{\link{sharpeScreening}} and \code{\link{alphaScreening}}.
 }
+\author{
+David Ardia and Kris Boudt.
+}
 \keyword{htest}
-

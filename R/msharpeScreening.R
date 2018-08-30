@@ -2,7 +2,7 @@
 
 # #' @name .msharpeScreening
 # #' @title See msharpeScreening
-# #' @importFrom snow makeCluster clusterApply stopCluster
+# #' @importFrom parallel makeCluster clusterApplyLB stopCluster
 # #' @import compiler
 .msharpeScreening <- function(X, level = 0.9, na.neg = TRUE, control = list()) {
   
@@ -25,15 +25,22 @@
   bsids <- bootIndices(T, ctr$nBoot, ctr$bBoot)
   
   if (length(liststocks) > 1) {
-    cl <- snow::makeCluster(c(rep("localhost", ctr$nCore)), type = "SOCK")
+    #cl <- snow::makeCluster(c(rep("localhost", ctr$nCore)), type = "SOCK")
+    cl <- parallel::makeCluster(ctr$nCore)
     
     liststocks <- liststocks[1:(length(liststocks) - 1)]
     
-    z <- snow::clusterApply(cl = cl, x = as.list(liststocks), fun = msharpeScreeningi, 
-                            rdata = X, level = level, T = T, N = N, na.neg = na.neg, nBoot = ctr$nBoot, 
-                            bsids = bsids, minObs = ctr$minObs, type = ctr$type, hac = ctr$hac, 
-                            b = ctr$bBoot, ttype = ctr$ttype, pBoot = ctr$pBoot)
-    snow::stopCluster(cl)
+    #z <- snow::clusterApply(cl = cl, x = as.list(liststocks), fun = msharpeScreeningi, 
+    #                        rdata = X, level = level, T = T, N = N, na.neg = na.neg, nBoot = ctr$nBoot, 
+    #                        bsids = bsids, minObs = ctr$minObs, type = ctr$type, hac = ctr$hac, 
+    #                        b = ctr$bBoot, ttype = ctr$ttype, pBoot = ctr$pBoot)
+    
+    z <- parallel::clusterApplyLB(cl = cl, x = as.list(liststocks), fun = msharpeScreeningi, 
+                                  rdata = X, level = level, T = T, N = N, na.neg = na.neg, nBoot = ctr$nBoot, 
+                                  bsids = bsids, minObs = ctr$minObs, type = ctr$type, hac = ctr$hac, 
+                                  b = ctr$bBoot, ttype = ctr$ttype, pBoot = ctr$pBoot)
+    #snow::stopCluster(cl)
+    parallel::stopCluster(cl)
     
     for (i in 1:length(liststocks)) {
       out <- z[[i]]
@@ -138,7 +145,7 @@
 #' \code{pineg}: Vector (of length \eqn{N}) of probability of underperformance
 #' performance.
 #' @note Further details on the methdology with an application to the hedge
-#' fund industry is given in in Ardia and Boudt (2016). 
+#' fund industry is given in in Ardia and Boudt (2018). 
 #' 
 #' Some internal functions where adapted from Wolf's R code.
 #' 
@@ -153,10 +160,10 @@
 #' \emph{Finance Research Letters} \bold{13}, pp.97--104. 
 #' \doi{10.1016/j.frl.2015.02.008}
 #' 
-#' Ardia, D., Boudt, K. (2016).  
+#' Ardia, D., Boudt, K. (2018).  
 #' The Peer Ratios Performance of Hedge Funds. 
-#' \emph{Working paper}.
-#' \doi{10.2139/ssrn.2000901}
+#' \emph{Journal of Banking and Finance} \bold{87}, pp.351-.368.
+#' \doi{10.1016/j.jbankfin.2017.10.014}
 #' 
 #' Barras, L., Scaillet, O., Wermers, R. (2010).  
 #' False discoveries in mutual fund performance: Measuring luck in estimated alphas.  

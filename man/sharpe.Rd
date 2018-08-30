@@ -34,9 +34,6 @@ print(out)
 out = sharpe(hfdata, na.rm = FALSE)
 print(out)
 }
-\author{
-David Ardia and Kris Boudt.
-}
 \references{
 Ardia, D., Boudt, K. (2015).  
 Testing equality of modified Sharpe ratios.
@@ -57,5 +54,7 @@ The Sharpe ratio.
 \code{\link{sharpeTesting}}, \code{\link{sharpeScreening}} and
 \code{\link{msharpe}}.
 }
+\author{
+David Ardia and Kris Boudt.
+}
 \keyword{htest}
-
