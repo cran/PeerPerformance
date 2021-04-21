@@ -1,6 +1,6 @@
 Package: PeerPerformance
-Version: 2.2.2
-Date: 2020-04-19
+Version: 2.2.3
+Date: 2021-04-20
 Title: Luck-Corrected Peer Performance Analysis in R
 Authors@R: c(person("David", "Ardia", role = c("aut", "cre"), comment = c(ORCID = "0000-0003-2823-782X"),
                      email = "david.ardia.ch@gmail.com"),
@@ -14,11 +14,11 @@ Description: Provides functions to perform the peer performance
 BugReports: https://github.com/ArdiaD/PeerPerformance/issues
 URL: https://github.com/ArdiaD/PeerPerformance
 License: GPL (>= 2)
-RoxygenNote: 7.1.0
+RoxygenNote: 7.1.1
 NeedsCompilation: no
-Packaged: 2020-04-21 04:10:30 UTC; ardiad
+Packaged: 2021-04-21 02:19:19 UTC; dardia
 Author: David Ardia [aut, cre] (<https://orcid.org/0000-0003-2823-782X>),
   Kris Boudt [aut],
   Nabil Bouamara [ctb]
 Repository: CRAN
-Date/Publication: 2020-04-21 05:20:06 UTC
+Date/Publication: 2021-04-21 05:30:02 UTC
