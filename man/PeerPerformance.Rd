@@ -5,7 +5,7 @@
 \alias{PeerPerformance}
 \title{PeerPerformance: Luck-corrected peer performance analysis in R}
 \description{
-\code{PeerPerformance} (Ardia and Boudt, 20xx) is an \R package for the peer-performance evaluation of financial investments with 
+\code{PeerPerformance} is an \R package for the peer-performance evaluation of financial investments with 
 luck-correction, useful in the financial industry. In particular, it implements the peer performance ratios of Ardia and Boudt 
 (2018) which measure the percentage of peers a focal (hedge) fund outperforms and underperforms, after 
 correction for luck. It is useful for fund or portfolio managers to benchmark their investments or screen a universe of new funds. 
@@ -42,24 +42,17 @@ Testing equality of modified Sharpe ratios.
 \doi{10.1016/j.frl.2015.02.008}
 
 Ardia, D., Boudt, K. (2018).  
-The Peer Ratios Performance of Hedge Funds. 
+The peer performance ratios of hedge Funds. 
 \emph{Journal of Banking and Finance} \bold{87}, pp.351-.368.
 \doi{10.1016/j.jbankfin.2017.10.014}
-
-Ardia, D., Boudt, K. (20xx).    
-\emph{PeerPerformance: Luck-corrected peer performance analysis in R}.    
-R package.   
-\url{https://github.com/ArdiaD/PeerPerformance}
 
 Barras, L., Scaillet, O., Wermers, R. (2010).  
 False discoveries in mutual fund performance: Measuring luck in estimated alphas.  
 \emph{Journal of Finance} \bold{65}(1), pp.179--216.
-\doi{10.1111/j.1540-6261.2009.01527.x}
 
 Favre, L., Galeano, J.A. (2002).  
 Mean-modified Value-at-Risk Optimization with Hedge Funds.  
 \emph{Journal of Alternative Investments} \bold{5}(2), pp.21--25.
-\doi{10.3905/jai.2002.319052}
 
 Gregoriou, G. N., Gueyie, J.-P. (2003).  
 Risk-adjusted performance of funds of hedge funds using a modified Sharpe ratio.  
@@ -68,17 +61,14 @@ Risk-adjusted performance of funds of hedge funds using a modified Sharpe ratio.
 Ledoit, O., Wolf, M. (2008). 
 Robust performance hypothesis testing with the Sharpe ratio.  
 \emph{Journal of Empirical Finance} \bold{15}(5), pp.850--859.
-\doi{10.1016/j.jempfin.2008.03.002}
 
 Sharpe, W.F. (1994).  
 The Sharpe ratio.  
 \emph{Journal of Portfolio Management} \bold{21}(1), pp.49--58.
-\doi{10.3905/jpm.1994.409501}
 
 Storey, J. (2002).  
 A direct approach to false discovery rates.
 \emph{Journal of the Royal Statistical Society B} \bold{64}(3), pp.479--498.
-\doi{10.1111/1467-9868.00346}
 }
 \author{
 David Ardia and Kris Boudt.
