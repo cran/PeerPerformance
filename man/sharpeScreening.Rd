@@ -4,13 +4,21 @@
 \alias{sharpeScreening}
 \title{Screening using the Sharpe outperformance ratio}
 \usage{
-sharpeScreening(X, control = list())
+sharpeScreening(X, control = list(), Y = NULL)
 }
 \arguments{
 \item{X}{Matrix \eqn{(T \times N)}{(TxN)} of \eqn{T} returns for the \eqn{N}
 funds. \code{NA} values are allowed.}
 
 \item{control}{Control parameters (see *Details*).}
+
+\item{Y}{Optional matrix \eqn{(T \times M)}{(TxM)} of returns for a second
+(peer) group of \eqn{M} funds. When supplied, the ratios are computed for
+each fund in \code{X} against the funds in \code{Y} (cross-group screening)
+instead of against the other funds in \code{X}; a single focal fund versus a
+peer group corresponds to \code{X} being a vector. Columns of \code{Y}
+identical to the focal fund are automatically excluded. Default:
+\code{Y = NULL}, i.e. within-group screening.}
 }
 \value{
 A list with the following components:\cr
@@ -46,7 +54,7 @@ Function which performs the screening of a universe of returns, and
 computes the Sharpe outperformance ratio.
 }
 \details{
-The Sharpe ratio (Sharpe 1992) is one industry standard for measuring the
+The Sharpe ratio (Sharpe 1994) is one industry standard for measuring the
 absolute risk adjusted performance of hedge funds. We propose to complement
 the Sharpe ratio with the fund's outperformance ratio, defined as the
 percentage number of funds that have a significantly lower Sharpe ratio. In
@@ -83,8 +91,9 @@ errors. Default: \code{hac = FALSE}.
 \item \code{'nBoot'} Number of bootstrap replications for computing the p-value. Default: \code{nBoot =
 499}.
 \item \code{'bBoot'} Block length in the circular bootstrap. Default:
-\code{bBoot = 1}, i.e. iid bootstrap. \code{bBoot = 0} uses optimal
-block-length.
+\code{bBoot = 1}, i.e. iid bootstrap. (The data-driven choice
+\code{bBoot = 0} is only available in \code{\link{sharpeTesting}}, not in
+screening.)
 \item \code{'pBoot'} Symmetric p-value (\code{pBoot = 1}) or
 asymmetric p-value (\code{pBoot = 2}). Default: \code{pBoot = 1}.
 \item \code{'nCore'} Number of cores to be used. Default: \code{nCore = 1}.
@@ -94,16 +103,36 @@ the ratios. Default: \code{minObs = 10}.
 number of observations to compute pi0. Default: \code{minObsPi = 1}.
 \item \code{'lambda'} Threshold value to compute pi0. Default: \code{lambda
 = NULL}, i.e. data driven choice.
+\item \code{'gammaPos'} One-sided quantile level (of the standard Normal
+distribution) used as the critical value for counting outperformed peers:
+a peer counts as outperformed when the pairwise t-statistic exceeds
+\code{qnorm(gammaPos)} (a \emph{negative} threshold for
+\code{gammaPos < 0.5}), and the expected fraction \code{1 - gammaPos} of
+false positives among the equal-performing peers is then subtracted.
+Default: \code{gammaPos = 0.4} (the value recommended in Ardia and Boudt, 2018).
+\item \code{'gammaNeg'} Mirror image of \code{gammaPos} for the peers that
+outperform the focal fund: the count uses \code{tstat <= qnorm(gammaNeg)}
+and subtracts the expected fraction \code{gammaNeg} of false positives.
+Default: \code{gammaNeg = 0.6}.
+\item \code{'fastAdjust'} Use a fast vectorised inversion in the
+truncated-normal bias correction of \eqn{\pi^0}{pi0} instead of one
+\code{uniroot} call per value. This is the dominant cost when \code{lambda}
+is data driven and gives a large speed-up on big universes. The bisection
+locates the root to about 1e-12; since \code{uniroot} stops at its own
+tolerance (about 1.2e-4), the two paths typically differ by a few 1e-5, the
+fast path being the more accurate. Default: \code{fastAdjust = FALSE},
+i.e. the original code path, kept as default so that published results
+reproduce exactly.
 }
 }
 \note{
 Further details on the methodology with an application to the hedge
-fund industry is given in in Ardia and Boudt (2018).
+fund industry is given in Ardia and Boudt (2018).
 
 Some internal functions where adapted from Michael Wolf MATLAB code.
 
 Application of the false discovery rate approach applied to the mutual fund
-industry has been presented in Barraz, Scaillet and Wermers (2010).
+industry has been presented in Barras, Scaillet and Wermers (2010).
 }
 \examples{
 ## Load the data (randomized data of monthly hedge fund returns)
@@ -113,8 +142,12 @@ rets = hfdata[,1:4]
 ## Sharpe screening
 sharpeScreening(rets, control = list(nCore = 1))
 
-## Sharpe screening with bootstrap and HAC standard deviation
-sharpeScreening(rets, control = list(nCore = 1, type = 2, hac = TRUE))
+## Sharpe screening with HAC standard errors (asymptotic test)
+sharpeScreening(rets, control = list(nCore = 1, hac = TRUE))
+
+## Sharpe screening with the studentized circular bootstrap
+## (the 'hac' flag is ignored when type = 2)
+sharpeScreening(rets, control = list(nCore = 1, type = 2))
 }
 \references{
 Ardia, D., Boudt, K. (2015).

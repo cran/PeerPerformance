@@ -4,36 +4,67 @@
 # #' @title See msharpeScreening
 # #' @importFrom parallel makeCluster clusterApplyLB stopCluster
 # #' @import compiler
-.msharpeScreening <- function(X, level = 0.9, na.neg = TRUE, control = list()) {
+.msharpeScreening <- function(X, level = 0.9, na.neg = TRUE, control = list(),
+                              Y = NULL) {
+
+  # cross-group screening: each fund in X against every fund in group Y
+  if (!is.null(Y)) {
+    return(.msharpeScreeningXY(X, Y, level = level, na.neg = na.neg,
+                               control = control))
+  }
 
   # process control
   ctr <- processControl(control)
+  if (ctr$bBoot == 0) {
+    stop("'bBoot = 0' (data-driven block length) is not supported in screening; ",
+         "set an explicit block length 'bBoot >= 1'.")
+  }
 
   # size of inputs and outputs
+  X <- as.matrix(X)
   T <- nrow(X)
   N <- ncol(X)
+  if (N < 2L) {
+    stop("within-group screening needs at least two funds in 'X'; supply 'Y' to screen a single fund against a peer group")
+  }
   pval <- dmsharpe <- tstat <- matrix(data = NA, N, N)
 
   # determine which pairs can be compared (in a matrix way)
   Y <- 1 * (!is.nan(X) & !is.na(X))
   YY <- crossprod(Y)  #YY = t(Y) %*% Y # row i indicates how many observations in common with column k
+  pairLens <- YY[upper.tri(YY)]  # pairwise complete-case lengths (before thresholding)
   YY[YY < ctr$minObs] <- 0
   YY[YY > 0] <- 1
   liststocks <- c(1:nrow(YY))[rowSums(YY) > ctr$minObsPi]
 
-  # determine bootstrap indices (do it before to speed up computations)
-  bsids <- bootIndices(T, ctr$nBoot, ctr$bBoot)
+  # pre-generate the bootstrap indices in the master, one matrix per distinct
+  # pair length (workers select by length; see bootIndicesByLen). Only needed
+  # for the bootstrap test, and only for pairs that pass 'minObs', so that the
+  # asymptotic path never depends on 'bBoot'.
+  bsids <- NULL
+  if (ctr$type == 2) {
+    bsids <- bootIndicesByLen(pairLens[pairLens >= ctr$minObs],
+                              ctr$nBoot, ctr$bBoot)
+  }
 
   if (length(liststocks) > 1) {
-    cl <- parallel::makeCluster(ctr$nCore)
-
     liststocks <- liststocks[1:(length(liststocks) - 1)]
 
-	z <- parallel::clusterApplyLB(cl = cl, x = as.list(liststocks), fun = msharpeScreeningi,
-                                  rdata = X, level = level, T = T, N = N, na.neg = na.neg, nBoot = ctr$nBoot,
-                                  bsids = bsids, minObs = ctr$minObs, type = ctr$type, hac = ctr$hac,
-                                  b = ctr$bBoot, ttype = ctr$ttype, pBoot = ctr$pBoot)
-    parallel::stopCluster(cl)
+    if (ctr$nCore == 1) {
+      # serial path: no PSOCK cluster (avoids the per-call cluster overhead)
+      z <- lapply(as.list(liststocks), msharpeScreeningi,
+                  rdata = X, level = level, T = T, N = N, na.neg = na.neg,
+                  nBoot = ctr$nBoot, bsids = bsids, minObs = ctr$minObs,
+                  type = ctr$type, hac = ctr$hac, b = ctr$bBoot,
+                  ttype = ctr$ttype, pBoot = ctr$pBoot)
+    } else {
+      cl <- parallel::makeCluster(ctr$nCore)
+      on.exit(parallel::stopCluster(cl), add = TRUE)
+      z <- parallel::clusterApplyLB(cl = cl, x = as.list(liststocks), fun = msharpeScreeningi,
+                                    rdata = X, level = level, T = T, N = N, na.neg = na.neg, nBoot = ctr$nBoot,
+                                    bsids = bsids, minObs = ctr$minObs, type = ctr$type, hac = ctr$hac,
+                                    b = ctr$bBoot, ttype = ctr$ttype, pBoot = ctr$pBoot)
+    }
 
     for (i in 1:length(liststocks)) {
       out <- z[[i]]
@@ -48,7 +79,8 @@
 
   # pi
   pi <- computePi(pval = pval, dalpha = dmsharpe, tstat = tstat, lambda = ctr$lambda,
-                  nBoot = ctr$nBoot)
+                  nBoot = ctr$nBoot, bpos = ctr$gammaPos, bneg = ctr$gammaNeg,
+                  fast = ctr$fastAdjust)
 
   # info on the funds
   info <- infoFund(X, level = level, na.neg = na.neg)
@@ -92,8 +124,9 @@
 #' bootstrap replications for computing the p-value. Default: \code{nBoot =
 #' 499}.
 #' \item \code{'bBoot'} Block length in the circular bootstrap. Default:
-#' \code{bBoot = 1}, i.e. iid bootstrap. \code{bBoot = 0} uses optimal
-#' block-length.
+#' \code{bBoot = 1}, i.e. iid bootstrap. (The data-driven choice
+#' \code{bBoot = 0} is only available in \code{\link{msharpeTesting}}, not in
+#' screening.)
 #' \item \code{'pBoot'} Symmetric p-value (\code{pBoot = 1}) or
 #' asymmetric p-value (\code{pBoot = 2}). Default: \code{pBoot = 1}.
 #' \item \code{'nCore'} Number of cores to be used. Default: \code{nCore = 1}.
@@ -102,6 +135,26 @@
 #' \item \code{'minObsPi'} Minimum number of observations to compute pi0. Default: \code{minObsPi = 1}.
 #' \item \code{'lambda'} Threshold value to compute pi0. Default: \code{lambda
 #' = NULL}, i.e. data driven choice.
+#' \item \code{'gammaPos'} One-sided quantile level (of the standard Normal
+#' distribution) used as the critical value for counting outperformed peers:
+#' a peer counts as outperformed when the pairwise t-statistic exceeds
+#' \code{qnorm(gammaPos)} (a \emph{negative} threshold for
+#' \code{gammaPos < 0.5}), and the expected fraction \code{1 - gammaPos} of
+#' false positives among the equal-performing peers is then subtracted.
+#' Default: \code{gammaPos = 0.4} (the value recommended in Ardia and Boudt, 2018).
+#' \item \code{'gammaNeg'} Mirror image of \code{gammaPos} for the peers that
+#' outperform the focal fund: the count uses \code{tstat <= qnorm(gammaNeg)}
+#' and subtracts the expected fraction \code{gammaNeg} of false positives.
+#' Default: \code{gammaNeg = 0.6}.
+#' \item \code{'fastAdjust'} Use a fast vectorised inversion in the
+#' truncated-normal bias correction of \eqn{\pi^0}{pi0} instead of one
+#' \code{uniroot} call per value. This is the dominant cost when \code{lambda}
+#' is data driven and gives a large speed-up on big universes. The bisection
+#' locates the root to about 1e-12; since \code{uniroot} stops at its own
+#' tolerance (about 1.2e-4), the two paths typically differ by a few 1e-5, the
+#' fast path being the more accurate. Default: \code{fastAdjust = FALSE},
+#' i.e. the original code path, kept as default so that published results
+#' reproduce exactly.
 #' }
 #' @param X Matrix \eqn{(T \times N)}{(TxN)} of \eqn{T} returns for the \eqn{N}
 #' funds. \code{NA} values are allowed.
@@ -110,6 +163,13 @@
 #' returned if a negative modified Value-at-Risk is obtained.  Default
 #' \code{na.neg = TRUE}.
 #' @param control Control parameters (see *Details*).
+#' @param Y Optional matrix \eqn{(T \times M)}{(TxM)} of returns for a second
+#' (peer) group of \eqn{M} funds. When supplied, the ratios are computed for
+#' each fund in \code{X} against the funds in \code{Y} (cross-group screening)
+#' instead of against the other funds in \code{X}; a single focal fund versus a
+#' peer group corresponds to \code{X} being a vector. Columns of \code{Y}
+#' identical to the focal fund are automatically excluded. Default:
+#' \code{Y = NULL}, i.e. within-group screening.
 #' @return A list with the following components:\cr
 #'
 #' \code{n}: Vector (of length \eqn{N}) of number of non-\code{NA}
@@ -139,12 +199,12 @@
 #' \code{pineg}: Vector (of length \eqn{N}) of probability of underperformance
 #' performance.
 #' @note Further details on the methodology with an application to the hedge
-#' fund industry is given in in Ardia and Boudt (2018).
+#' fund industry is given in Ardia and Boudt (2018).
 #'
-#' Some internal functions where adapted from Wolf's R code.
+#' Some internal functions where adapted from Michael Wolf MATLAB code.
 #'
 #' Application of the false discovery rate approach applied to the mutual fund
-#' industry has been presented in Barraz, Scaillet and Wermers (2010).
+#' industry has been presented in Barras, Scaillet and Wermers (2010).
 #' @author David Ardia and Kris Boudt.
 #' @seealso \code{\link{msharpe}}, \code{\link{msharpeTesting}},
 #' \code{\link{sharpeScreening}} and \code{\link{alphaScreening}}.
@@ -185,8 +245,9 @@
 #' ## Modified Sharpe screening
 #' msharpeScreening(rets, control = list(nCore = 1))
 #'
-#' ## Modified Sharpe screening with bootstrap and HAC standard deviation
-#' msharpeScreening(rets, control = list(nCore = 1, type = 2, hac = TRUE))
+#' ## Modified Sharpe screening with the studentized circular bootstrap
+#' ## (the 'hac' flag is ignored when type = 2)
+#' msharpeScreening(rets, control = list(nCore = 1, type = 2))
 #' @export
 #' @importFrom compiler cmpfun
 msharpeScreening <- compiler::cmpfun(.msharpeScreening)
@@ -214,13 +275,21 @@ msharpeScreening <- compiler::cmpfun(.msharpeScreening)
     if (nObs[k] < minObs) {
       next
     }
-    rets <- cbind(X[idx[, k], 1], Y[idx[, k], k])
+    rets <- cbind(X[idx[, k], k], Y[idx[, k], k])
 
     if (type == 1) {
       tmp <- msharpeTestAsymptotic(rets, level, na.neg, hac, ttype)
     } else {
-      tmp <- msharpeTestBootstrap(rets, level, na.neg, bsids, b,
+      # indices pre-generated in the master for this pair's length
+      bs <- bsids[[as.character(nObs[k])]]
+      if (is.null(bs)) {
+        next  # block length exceeds this pair's sample size
+      }
+      tmp <- msharpeTestBootstrap(rets, level, na.neg, bs, b,
                                   ttype, pBoot)
+    }
+    if (!is.finite(tmp$tstat)) {
+      next  # degenerate pair or NA modified VaR (na.neg)
     }
 
     dmsharpei[j] <- tmp$dmsharpe

@@ -4,7 +4,13 @@
 \alias{alphaScreening}
 \title{Screening using the alpha outperformance ratio}
 \usage{
-alphaScreening(X, factors = NULL, control = list(), screen_beta = FALSE)
+alphaScreening(
+  X,
+  factors = NULL,
+  control = list(),
+  screen_beta = NULL,
+  Y = NULL
+)
 }
 \arguments{
 \item{X}{Matrix \eqn{(T \times N)}{(TxN)} of \eqn{T} returns for the \eqn{N}
@@ -16,9 +22,21 @@ funds. \code{NA} values are allowed.}
 \item{control}{Control parameters (see *Details*).}
 
 \item{screen_beta}{Boolean to screen all factors' coefficients (beta).
-Default: \code{screen_beta=FALSE} (i.e. only outputs the alpha).
-If \code{screen_beta=TRUE}, each element of the returned list will have a new first dimension
-representing each coefficient (the first one being alpha)}
+Default: \code{screen_beta = NULL}, in which case the value is taken from
+\code{control$screen_beta} (itself defaulting to \code{FALSE}, i.e. only the
+alpha is screened). When supplied directly, the argument takes precedence
+over the control list. If \code{TRUE}, each element of the returned list will
+have a new first dimension representing each coefficient (the first one being
+alpha).}
+
+\item{Y}{Optional matrix \eqn{(T \times M)}{(TxM)} of returns for a second
+(peer) group of \eqn{M} funds. When supplied, the ratios are computed for
+each fund in \code{X} \emph{against the funds in \code{Y}} (cross-group
+screening) instead of against the other funds in \code{X}. A single focal
+fund versus a peer group corresponds to \code{X} being a vector (or a
+one-column matrix). Columns of \code{Y} identical to the focal fund (e.g.
+when \code{X} is a subset of \code{Y}) are automatically excluded. Default:
+\code{Y = NULL}, i.e. within-group screening.}
 }
 \value{
 A list with the following components:\cr
@@ -84,6 +102,31 @@ for computing the p-values). Default: \code{minObsPi = 1}.
 \code{nCore = 1}.
 \item \code{'lambda'} Threshold value to compute pi0.
 Default: \code{lambda = NULL}, i.e. data driven choice.
+\item \code{'gammaPos'} One-sided quantile level (of the standard Normal
+distribution) used as the critical value for counting outperformed peers:
+a peer counts as outperformed when the pairwise t-statistic exceeds
+\code{qnorm(gammaPos)} (a \emph{negative} threshold for
+\code{gammaPos < 0.5}; e.g., \code{qnorm(0.4)} is about \code{-0.25}), and
+the expected fraction \code{1 - gammaPos} of false positives among the
+equal-performing peers is then subtracted. Smaller values count more peers
+before the correction. Default: \code{gammaPos = 0.4} (the value
+recommended in Ardia and Boudt, 2018).
+\item \code{'gammaNeg'} Mirror image of \code{gammaPos} for the peers that
+outperform the focal fund: the count uses \code{tstat <= qnorm(gammaNeg)}
+and subtracts the expected fraction \code{gammaNeg} of false positives.
+Default: \code{gammaNeg = 0.6}.
+\item \code{'fastAdjust'} Use a fast vectorised inversion in the
+truncated-normal bias correction of \eqn{\pi^0}{pi0} instead of one
+\code{uniroot} call per value. This is the dominant cost when \code{lambda}
+is data driven and gives a large speed-up on big universes. The bisection
+locates the root to about 1e-12; since \code{uniroot} stops at its own
+tolerance (about 1.2e-4), the two paths typically differ by a few 1e-5, the
+fast path being the more accurate. Default: \code{fastAdjust = FALSE},
+i.e. the original code path, kept as default so that published results
+reproduce exactly.
+\item \code{'screen_beta'} Screen the factor exposures (betas) in addition to
+the alpha; see the \code{screen_beta} argument. Default:
+\code{screen_beta = FALSE}.
 }
 }
 \note{
@@ -93,9 +136,11 @@ fund industry is given in Ardia and Boudt (2018).
 Application of the false discovery rate approach applied to the mutual fund
 industry has been presented in Barras, Scaillet and Wermers (2010).
 
-Currently, the HAC asymptotic and studentized circular block bootstrap
-presented in Ledoit and Wolf (2008) are not supported by the
-\code{alphaScreening} function.
+HAC standard errors are available via \code{control = list(hac = TRUE)}
+(computed with \pkg{sandwich}/\pkg{lmtest}). The studentized circular block
+bootstrap of Ledoit and Wolf (2008) applies to the Sharpe-ratio routines
+(\code{\link{sharpeScreening}}, \code{\link{msharpeScreening}}) and is not
+used by \code{alphaScreening}.
 }
 \examples{
 ## Load the data (randomized data of monthly hedge fund returns)
@@ -109,6 +154,12 @@ alphaScreening(rets, control = ctr)
 ## Run alpha screening with HAC standard deviation
 ctr = list(nCore = 1, hac = TRUE)
 alphaScreening(rets, control = ctr)
+
+## Cross-group screening: a single focal fund against a peer group
+alphaScreening(hfdata[, 1], Y = hfdata[, 11:20], control = list(nCore = 1))
+
+## Cross-group screening: peer group X against peer group Y
+alphaScreening(hfdata[, 1:5], Y = hfdata[, 11:20], control = list(nCore = 1))
 }
 \references{
 Ardia, D., Boudt, K. (2015).
@@ -118,7 +169,7 @@ Testing equality of modified Sharpe ratios.
 
 Ardia, D., Boudt, K. (2018).
 The peer performance ratios of hedge funds.
-\emph{Journal of Banking and Finance} \bold{87}, pp.351-.368.
+\emph{Journal of Banking and Finance} \bold{87}, pp.351--368.
 \doi{10.1016/j.jbankfin.2017.10.014}
 
 Barras, L., Scaillet, O., Wermers, R. (2010).

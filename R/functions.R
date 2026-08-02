@@ -3,10 +3,8 @@
 #@name processControl
 #@title Control parameters processsing
 processControl <- function(control) {
-  if (!is.list(control) || length(control) == 0) {
-    control <- list(type = 1, ttype = 2, hac = FALSE, nBoot = 249,
-                    bBoot = 1, pBoot = 1, nCore = 1, minObs = 10, minObsPi = 1,
-                    lambda = NULL)
+  if (!is.list(control)) {
+    control <- list()
   }
   nam <- names(control)
   if (!("type" %in% nam) || is.null(control$type)) {
@@ -39,7 +37,64 @@ processControl <- function(control) {
   if (!("lambda" %in% nam) || is.null(control$lambda)) {
     control$lambda <- NULL
   }
+  if (!("screen_beta" %in% nam) || is.null(control$screen_beta)) {
+    control$screen_beta <- FALSE
+  }
+  if (!("fastAdjust" %in% nam) || is.null(control$fastAdjust)) {
+    control$fastAdjust <- FALSE
+  }
+  if (!("gammaPos" %in% nam) || is.null(control$gammaPos)) {
+    control$gammaPos <- 0.4
+  }
+  if (!("gammaNeg" %in% nam) || is.null(control$gammaNeg)) {
+    control$gammaNeg <- 0.6
+  }
+
+  # basic validation of the (possibly user-supplied) values
+  for (nm in c("hac", "screen_beta", "fastAdjust")) {
+    v <- control[[nm]]
+    if (length(v) != 1L || !is.logical(v) || is.na(v))
+      stop("'control$", nm, "' must be a single TRUE/FALSE")
+  }
+  for (nm in c("type", "ttype", "pBoot", "nBoot", "bBoot", "nCore",
+               "minObs", "minObsPi", "gammaPos", "gammaNeg")) {
+    v <- control[[nm]]
+    if (length(v) != 1L || !is.numeric(v) || !is.finite(v))
+      stop("'control$", nm, "' must be a single finite number")
+  }
+  # the count-like controls must be whole numbers (they feed sample.int(),
+  # makeCluster(), and array indexing)
+  for (nm in c("nBoot", "bBoot", "nCore", "minObs", "minObsPi")) {
+    v <- control[[nm]]
+    if (v != round(v))
+      stop("'control$", nm, "' must be a whole number")
+    control[[nm]] <- as.integer(round(v))
+  }
+  if (!(control$type %in% c(1, 2))) stop("'control$type' must be 1 or 2")
+  if (!(control$ttype %in% c(1, 2))) stop("'control$ttype' must be 1 or 2")
+  if (!(control$pBoot %in% c(1, 2))) stop("'control$pBoot' must be 1 or 2")
+  if (!is.logical(control$hac)) stop("'control$hac' must be logical")
+  if (control$nBoot < 1) stop("'control$nBoot' must be >= 1")
+  if (control$bBoot < 0) stop("'control$bBoot' must be >= 0")
+  if (control$nCore < 1) stop("'control$nCore' must be >= 1")
+  if (control$minObs < 1) stop("'control$minObs' must be >= 1")
+  if (control$minObsPi < 0) stop("'control$minObsPi' must be >= 0")
+  if (!is.null(control$lambda) && (any(control$lambda < 0) || any(control$lambda >= 1)))
+    stop("'control$lambda' must lie in [0, 1)")
+  if (control$gammaPos <= 0 || control$gammaPos >= 1) stop("'control$gammaPos' must lie in (0, 1)")
+  if (control$gammaNeg <= 0 || control$gammaNeg >= 1) stop("'control$gammaNeg' must lie in (0, 1)")
+
   return(control)
+}
+
+#@name .coefNames
+#@title Row labels for the screen_beta coefficients (alpha + factor betas)
+.coefNames <- function(factors) {
+  nm <- colnames(factors)
+  if (is.null(nm)) {
+    nm <- paste0("beta", seq_len(ncol(as.matrix(factors))))
+  }
+  c("alpha", nm)
 }
 
 #@name alphaFactor
@@ -53,7 +108,7 @@ alphaFactor <- function(X, factors = NULL) {
 #' @name sharpe
 #' @title Compute Sharpe ratio
 #' @description Function which computes the Sharpe ratio.
-#' @details The Sharpe ratio (Sharpe 1992) is one industry standard for measuring the
+#' @details The Sharpe ratio (Sharpe 1994) is one industry standard for measuring the
 #' absolute risk adjusted performance of hedge funds.
 #' @param X Vector (of length \eqn{T}) or matrix (of size \eqn{T \times
 #' N}{TxN}) of returns for \eqn{N} funds. \code{NA} values are allowed.
@@ -101,7 +156,7 @@ sharpe <- function(X, na.rm = TRUE) {
 #@name .sharpe
 #@title Compute Sharpe ratio
 .sharpe <- function(X, na.rm) {
-  nObs <- colSums(!is.nan(X), na.rm = na.rm)
+  nObs <- colSums(is.finite(X))
   mu.hat <- colMeans(X, na.rm = na.rm)
   X_ <- sweep(x = X, MARGIN = 2, STATS = mu.hat, FUN = "-")
   sig.hat <- sqrt(colSums(X_^2, na.rm = na.rm)/(nObs - 1))
@@ -236,9 +291,41 @@ msharpe <- function(X, level = 0.9, na.rm = TRUE, na.neg = TRUE) {
 }
 infoFund <- compiler::cmpfun(.infoFund)
 
+# #' @name .bootIndicesByLen
+# Pre-generate bootstrap indices for every distinct pairwise sample length, in
+# the master process. The screening functions pass the resulting named list to
+# the PSOCK workers, which select the matrix matching their pair's
+# complete-case length. This keeps all randomness in the master (so seeded
+# results do not depend on 'nCore') and guarantees a valid circular-block
+# structure at every length: previously a single full-length index matrix was
+# remapped by modulo inside the workers, which biased the iid resampling and
+# broke the block contiguity on unbalanced panels. Lengths shorter than the
+# block length are skipped (the corresponding pairs are left untested). On a
+# balanced panel there is a single length and the draws are identical to the
+# previous behavior.
+.bootIndicesByLen <- function(lens, nBoot, bBoot) {
+  lens <- sort(unique(as.integer(lens)), decreasing = TRUE)
+  lens <- lens[lens >= 1L]
+  keep <- lens >= max(1L, bBoot)
+  if (!any(keep)) {
+    stop("the bootstrap block length 'bBoot' cannot exceed the number of concordant observations of every pair")
+  }
+  if (!all(keep)) {
+    warning("some pairs have fewer concordant observations than the block length 'bBoot' and are left untested")
+  }
+  lens <- lens[keep]
+  out <- lapply(lens, function(L) bootIndices(L, nBoot, bBoot))
+  names(out) <- as.character(lens)
+  return(out)
+}
+bootIndicesByLen <- compiler::cmpfun(.bootIndicesByLen)
+
 # #' @name .bootIndices
 # #' @import compiler
 .bootIndices <- function(T, nBoot, bBoot) {
+  if (bBoot > T) {
+    stop("the bootstrap block length 'bBoot' cannot exceed the number of observations")
+  }
   idsBoot <- matrix(data = NA, nrow = T, ncol = nBoot)
   if (bBoot == 1) {
     idsBoot <- matrix(sample.int(T, size = T * nBoot, replace = TRUE),

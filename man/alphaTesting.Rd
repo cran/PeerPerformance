@@ -4,7 +4,7 @@
 \alias{alphaTesting}
 \title{Testing the difference of alpha outperformance ratios}
 \usage{
-alphaTesting(x, y, factors = NULL, control = list(), screen_beta = FALSE)
+alphaTesting(x, y, factors = NULL, control = list(), screen_beta = NULL)
 }
 \arguments{
 \item{x}{Vector (of length \eqn{T}) of returns for the first fund. \code{NA}
@@ -19,22 +19,28 @@ values are allowed.}
 \item{control}{Control parameters (see *Details*).}
 
 \item{screen_beta}{Boolean to screen all factors' coefficients (beta).
-Default: \code{screen_beta=FALSE} (i.e. only outputs the alpha).
-If \code{screen_beta=TRUE}, each element of the returned list will have a new first dimension
-representing each coefficient (the first one being alpha)}
+Default: \code{screen_beta = NULL}, in which case the value is taken from
+\code{control$screen_beta} (itself defaulting to \code{FALSE}). When supplied
+directly, the argument takes precedence. \code{screen_beta = TRUE} requires
+\code{factors}.}
 }
 \value{
 A list with the following components:\cr
 
 \code{n}: Number of non-\code{NA} concordant observations.\cr
 
-\code{alpha}: Vector (of length 2) of unconditional alpha outperformance ratios.\cr
+\code{alpha}: Vector (of length 2) of the two funds' unconditional alphas.\cr
 
-\code{dalpha}: alpha outperformance ratios difference.\cr
+\code{dalpha}: Difference of the two funds' alphas.\cr
 
-\code{tstat}: t-stat of alpha outperformance ratios differences.\cr
+\code{tstat}: t-stat of the alpha difference.\cr
 
-\code{pval}: pvalues of test of alpha outperformance ratios differences.
+\code{pval}: p-value of the test of equal alpha.\cr
+
+When \code{screen_beta = TRUE}, \code{alpha} is a matrix (one row per
+coefficient, the first being the alpha) and \code{dalpha}, \code{tstat} and
+\code{pval} are vectors with one entry per coefficient; the \code{print}
+method reports the alpha (first) coefficient only.
 }
 \description{
 Function which performs the testing of the difference of alpha outperformance ratios.
@@ -57,7 +63,7 @@ standard errors. Default: \code{hac = FALSE}.
 }
 \note{
 Further details on the methodology with an application to the hedge
-fund industry is given in in Ardia and Boudt (2018).
+fund industry is given in Ardia and Boudt (2018).
 
 Some internal functions where adapted from Michael Wolf MATLAB code.
 }
@@ -96,7 +102,7 @@ A direct approach to false discovery rates.
 \emph{Journal of the Royal Statistical Society B} \bold{64}(3), 479--498.
 }
 \seealso{
-\code{\link{alphaScreening}}..
+\code{\link{alphaScreening}}.
 }
 \author{
 David Ardia and Kris Boudt.
