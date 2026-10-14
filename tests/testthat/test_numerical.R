@@ -43,6 +43,20 @@ test_that("alphaTesting returns a coherent htest-like list", {
   expect_equal(unname(out$dalpha), unname(out$alpha[1] - out$alpha[2]), tolerance = 1e-8)
 })
 
+test_that("alphaTesting reports alphas from the common sample", {
+  x <- hfdata[, 1]
+  y <- hfdata[, 2]
+  x[1:5] <- NA_real_
+  y[56:60] <- NA_real_
+  factors <- matrix(seq_along(x), ncol = 1)
+
+  for (fac in list(NULL, factors)) {
+    out <- alphaTesting(x, y, factors = fac)
+    expect_equal(unname(out$dalpha),
+                 unname(out$alpha[1] - out$alpha[2]), tolerance = 1e-8)
+  }
+})
+
 test_that("alphaScreening with screen_beta returns one row per coefficient", {
   set.seed(1)
   rets <- hfdata[, 1:5]
@@ -304,6 +318,31 @@ test_that("confint.SCREENING brackets the point estimate and is valid", {
   expect_error(confint(scb), "screen_beta")
 })
 
+test_that("confint.SCREENING reuses the screening gamma values", {
+  rets <- hfdata[, 1:12]
+  sc <- alphaScreening(rets, control = list(nCore = 1,
+                                            gammaPos = 0.3,
+                                            gammaNeg = 0.7))
+  expect_equal(sc$gammaPos, 0.3)
+  expect_equal(sc$gammaNeg, 0.7)
+
+  set.seed(42)
+  automatic <- confint(sc, parm = "pipos", nBoot = 50)
+  set.seed(42)
+  explicit <- confint(sc, parm = "pipos", nBoot = 50,
+                      gammaPos = 0.3, gammaNeg = 0.7)
+  expect_identical(automatic, explicit)
+
+  old <- sc
+  old$gammaPos <- old$gammaNeg <- NULL
+  set.seed(42)
+  fallback <- confint(old, parm = "pipos", nBoot = 50)
+  set.seed(42)
+  default <- confint(old, parm = "pipos", nBoot = 50,
+                     gammaPos = 0.4, gammaNeg = 0.6)
+  expect_identical(fallback, default)
+})
+
 test_that("alphaTesting screen_beta returns a (K+1) x 2 alpha matrix (HAC and not)", {
   x <- hfdata[, 1]; y <- hfdata[, 2]
   fac <- hfdata[, 50:51]                       # K = 2 factors
@@ -475,4 +514,109 @@ test_that("plot methods accept the graphical arguments documented in '...'", {
   expect_silent(plot(rl,  xlab = "month", ylab = "ratio"))
   ## and the defaults still apply when nothing is passed
   expect_silent(plot(sc)); expect_silent(plot(eh)); expect_silent(plot(rl))
+})
+
+test_that("bootIndices fills every row when bBoot does not divide the sample", {
+  ## Regression: floor(T/bBoot) blocks left the last T %% bBoot entries at zero,
+  ## and the callers' '1 + ids %% T' remap turned every zero into observation 1.
+  for (p in list(c(50, 6), c(37, 4), c(60, 7), c(23, 5))) {
+    Tn <- p[1]; b <- p[2]
+    set.seed(11)
+    ids <- PeerPerformance:::bootIndices(Tn, 25, b)
+    expect_equal(dim(ids), c(Tn, 25L))
+    expect_false(any(is.na(ids)))
+    expect_true(all(ids >= 1 & ids <= Tn))     # no zeros, nothing out of range
+  }
+  ## observation 1 must not be over-represented after the remap
+  set.seed(12)
+  B   <- PeerPerformance:::bootIndices(50, 3000, 6)
+  frq <- tabulate(1 + B %% 50, nbins = 50)
+  expect_lt(abs(frq[1] / median(frq[-1]) - 1), 0.15)
+
+  ## when bBoot divides T the draws are unchanged (backward compatible)
+  set.seed(13); a <- PeerPerformance:::bootIndices(48, 20, 6)
+  set.seed(13); b2 <- PeerPerformance:::bootIndices(48, 20, 6)
+  expect_identical(a, b2)
+  expect_true(all(a >= 1 & a <= 48))
+
+  ## end to end: a block bootstrap screening whose pair length is not a
+  ## multiple of the block length still returns valid p-values
+  set.seed(14)
+  X <- matrix(rnorm(50 * 4, 0.01, 0.05), 50, 4)
+  s <- sharpeScreening(X, control = list(nCore = 1, type = 2, bBoot = 6,
+                                         nBoot = 99, lambda = 0.5))
+  ok <- !is.na(s$pval)
+  expect_true(any(ok))
+  expect_true(all(s$pval[ok] >= 0 & s$pval[ok] <= 1))
+  expect_false(any(is.nan(s$pval)))
+})
+
+test_that("a fund with no usable observation does not abort the screening", {
+  ## Regression: infoFund() called lm() on every column, so an all-NA fund
+  ## aborted the whole screening with "0 (non-NA) cases".
+  X <- hfdata[, 1:5]
+  X[, 3] <- NA
+  ctr <- list(nCore = 1, lambda = 0.5)
+  expect_silent(a <- alphaScreening(X, control = ctr))
+  expect_equal(length(a$pizero), 5L)
+  expect_true(is.na(a$alpha[3]))               # the empty fund reports NA
+  expect_true(all(is.finite(a$alpha[-3])))     # the others are unaffected
+  ## the same column with factors, and the other two screenings
+  expect_silent(alphaScreening(X, factors = hfdata[, 50, drop = FALSE], control = ctr))
+  expect_silent(sharpeScreening(X, control = ctr))
+  expect_silent(msharpeScreening(X, control = ctr))
+})
+
+test_that("non-finite returns are treated exactly like missing values", {
+  ## Regression: the missingness masks used !is.na() & !is.nan(), so an Inf
+  ## counted as an observation and lm() then failed with "NA/NaN/Inf in 'y'".
+  ctr <- list(nCore = 1, lambda = 0.5)
+  A <- hfdata[, 1:5]; A[10, 2] <- Inf
+  B <- hfdata[, 1:5]; B[10, 2] <- NA          # the reference behaviour
+  expect_silent(ra <- alphaScreening(A, control = ctr))
+  rb <- alphaScreening(B, control = ctr)
+  expect_equal(ra$pval, rb$pval, tolerance = 1e-12)
+  expect_identical(ra$npeer, rb$npeer)
+  expect_true(is.finite(ra$alpha[2]))
+  ## the Sharpe routines and the cross-group path too
+  expect_silent(s <- sharpeScreening(A, control = ctr))
+  expect_false(any(is.nan(s$pval)))
+  expect_silent(msharpeScreening(A, control = ctr))
+  expect_silent(alphaScreening(A[, 1], Y = A[, 2:5], control = ctr))
+})
+
+test_that("bBoot = 0 selects the block length on the complete cases", {
+  ## Regression: the block-length routines received the raw series, so with any
+  ## NA they returned NA and bootIndices() then failed with a subscript error.
+  x <- hfdata[, 1]; y <- hfdata[, 2]; x[1:10] <- NA
+  set.seed(1)
+  expect_silent(a <- sharpeTesting(x, y, control = list(type = 2, bBoot = 0,
+                                                        nBoot = 99)))
+  expect_true(is.finite(a$pval) && a$pval >= 0 && a$pval <= 1)
+  set.seed(1)
+  expect_silent(b <- msharpeTesting(x, y, control = list(type = 2, bBoot = 0,
+                                                         nBoot = 99)))
+  expect_true(is.finite(b$pval) && b$pval >= 0 && b$pval <= 1)
+})
+
+test_that("a rank-deficient factor set yields NA coefficients, not an error", {
+  ## Regression: summary(lm)$coef drops coefficients the design cannot
+  ## estimate, so indexing it by position over-ran the table. Coefficients are
+  ## now matched by name and inestimable ones stay NA in their own slot.
+  ctr <- list(nCore = 1, lambda = 0.5, screen_beta = TRUE)
+  f  <- hfdata[, 50]
+  F2 <- cbind(f, f)                      # perfectly collinear
+  F3 <- cbind(f, rep(1, length(f)))      # constant second factor
+  expect_silent(r2 <- alphaScreening(hfdata[, 1:5], factors = F2, control = ctr))
+  expect_equal(dim(r2$pizero), c(3L, 5L))          # alpha + 2 factor rows kept
+  expect_silent(alphaScreening(hfdata[, 1:5], factors = F3, control = ctr))
+  expect_silent(t2 <- alphaTesting(hfdata[, 1], hfdata[, 2], factors = F2,
+                                   screen_beta = TRUE))
+  expect_equal(dim(t2$alpha), c(3L, 2L))
+  ## the aliased coefficient is reported as NA rather than silently taking
+  ## another coefficient's value
+  expect_true(any(is.na(t2$dalpha)))
+  ## cross-group path as well
+  expect_silent(alphaScreening(hfdata[, 1], Y = hfdata[, 11:15], factors = F2,
+                               control = ctr))
 })

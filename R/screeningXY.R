@@ -22,7 +22,7 @@
     dxy <- xi - Y[, j]
     # usable rows: account for missing factors as lm(na.omit) would
     if (is.null(factors)) {
-      ok <- !is.na(dxy) & !is.nan(dxy)
+      ok <- is.finite(dxy)
     } else {
       ok <- stats::complete.cases(dxy, factors)
     }
@@ -42,9 +42,10 @@
       next  # (near) deterministic differential: skip to avoid spurious significance
     }
     if (!hac) {
-      sm <- sfit$coef
+      sm <- .padCoef(sfit$coef, stats::coef(fit))
     } else {
-      sm <- lmtest::coeftest(fit, vcov. = sandwich::vcovHAC(fit))
+      sm <- .padCoef(lmtest::coeftest(fit, vcov. = sandwich::vcovHAC(fit)),
+                     stats::coef(fit))
     }
     pvali[row_return, j]   <- sm[row_return, 4]
     dalphai[row_return, j] <- sm[row_return, 1]
@@ -59,6 +60,8 @@ alphaScreeningXYi <- compiler::cmpfun(.alphaScreeningXYi)
   ctr <- processControl(control)
   X <- as.matrix(X)
   Y <- as.matrix(Y)
+  X[!is.finite(X)] <- NA   # Inf/NaN are treated as missing throughout
+  Y[!is.finite(Y)] <- NA
   T <- nrow(X)
   if (nrow(Y) != T) {
     stop("'X' and 'Y' must have the same number of rows (time periods)")
@@ -103,7 +106,7 @@ alphaScreeningXYi <- compiler::cmpfun(.alphaScreeningXYi)
   pi <- computePi(pval = pval, dalpha = dalpha, tstat = tstat,
                   lambda = ctr$lambda, nBoot = ctr$nBoot,
                   bpos = ctr$gammaPos, bneg = ctr$gammaNeg,
-                  fast = ctr$fastAdjust)
+                  fast = ctr$fastAdjust, minObsPi = ctr$minObsPi)
 
   info <- infoFund(X, factors = factors, screen_beta = screen_beta)
 
@@ -123,6 +126,7 @@ alphaScreeningXYi <- compiler::cmpfun(.alphaScreeningXYi)
 
   out <- list(n = info$nObs, npeer = npeer, ny = nY, alpha = info$alpha,
               dalpha = dalpha, pval = pval, tstat = tstat, lambda = pi$lambda,
+              gammaPos = ctr$gammaPos, gammaNeg = ctr$gammaNeg,
               pizero = pi$pizero, pipos = pi$pipos, pineg = pi$pineg,
               cross = TRUE)
   class(out) <- "SCREENING"
@@ -140,7 +144,7 @@ alphaScreeningXY <- compiler::cmpfun(.alphaScreeningXY)
   xi <- X[, i]
   for (j in 1:nY) {
     dxy <- xi - Y[, j]
-    ok <- !is.na(dxy) & !is.nan(dxy)
+    ok <- is.finite(dxy)
     if (sum(ok) < minObs) {
       next
     }
@@ -161,7 +165,7 @@ alphaScreeningXY <- compiler::cmpfun(.alphaScreeningXY)
     if (!is.finite(tmp$tstat)) {
       next  # degenerate pair (e.g. zero-variance series)
     }
-    dsharpei[j] <- tmp$dsharpe
+    dsharpei[j] <- sharpe.ratio.diff(rets, Y = NULL, ttype = 1)
     pvali[j]    <- tmp$pval
     tstati[j]   <- tmp$tstat
   }
@@ -177,6 +181,8 @@ sharpeScreeningXYi <- compiler::cmpfun(.sharpeScreeningXYi)
   }
   X <- as.matrix(X)
   Y <- as.matrix(Y)
+  X[!is.finite(X)] <- NA   # Inf/NaN are treated as missing throughout
+  Y[!is.finite(Y)] <- NA
   T <- nrow(X)
   if (nrow(Y) != T) {
     stop("'X' and 'Y' must have the same number of rows (time periods)")
@@ -191,7 +197,7 @@ sharpeScreeningXYi <- compiler::cmpfun(.sharpeScreeningXYi)
   # cross-pair complete-case length (workers select by length)
   # only needed for the bootstrap test, and only for pairs passing 'minObs',
   # so that the asymptotic path never depends on 'bBoot'
-  pairLens <- crossprod(1 * (!is.na(X) & !is.nan(X)), 1 * (!is.na(Y) & !is.nan(Y)))
+  pairLens <- crossprod(1 * is.finite(X), 1 * is.finite(Y))
   bsids <- NULL
   if (ctr$type == 2) {
     bsids <- bootIndicesByLen(pairLens[pairLens >= ctr$minObs],
@@ -228,12 +234,13 @@ sharpeScreeningXYi <- compiler::cmpfun(.sharpeScreeningXYi)
   pi <- computePi(pval = pval, dalpha = dsharpe, tstat = tstat,
                   lambda = ctr$lambda, nBoot = ctr$nBoot,
                   bpos = ctr$gammaPos, bneg = ctr$gammaNeg,
-                  fast = ctr$fastAdjust)
+                  fast = ctr$fastAdjust, minObsPi = ctr$minObsPi)
   info <- infoFund(X)
 
   out <- list(n = info$nObs, npeer = rowSums(!is.na(pval)), ny = nY,
               sharpe = info$sharpe, dsharpe = dsharpe, pval = pval,
               tstat = tstat, lambda = pi$lambda, pizero = pi$pizero,
+              gammaPos = ctr$gammaPos, gammaNeg = ctr$gammaNeg,
               pipos = pi$pipos, pineg = pi$pineg, cross = TRUE)
   class(out) <- "SCREENING"
   return(out)
@@ -250,7 +257,7 @@ sharpeScreeningXY <- compiler::cmpfun(.sharpeScreeningXY)
   xi <- X[, i]
   for (j in 1:nY) {
     dxy <- xi - Y[, j]
-    ok <- !is.na(dxy) & !is.nan(dxy)
+    ok <- is.finite(dxy)
     if (sum(ok) < minObs) {
       next
     }
@@ -271,7 +278,8 @@ sharpeScreeningXY <- compiler::cmpfun(.sharpeScreeningXY)
     if (!is.finite(tmp$tstat)) {
       next  # degenerate pair or NA modified VaR (na.neg)
     }
-    dmsharpei[j] <- tmp$dmsharpe
+    dmsharpei[j] <- msharpe.ratio.diff(rets, Y = NULL, level, na.neg,
+                                       ttype = 1)
     pvali[j]     <- tmp$pval
     tstati[j]    <- tmp$tstat
   }
@@ -287,6 +295,8 @@ msharpeScreeningXYi <- compiler::cmpfun(.msharpeScreeningXYi)
   }
   X <- as.matrix(X)
   Y <- as.matrix(Y)
+  X[!is.finite(X)] <- NA   # Inf/NaN are treated as missing throughout
+  Y[!is.finite(Y)] <- NA
   T <- nrow(X)
   if (nrow(Y) != T) {
     stop("'X' and 'Y' must have the same number of rows (time periods)")
@@ -301,7 +311,7 @@ msharpeScreeningXYi <- compiler::cmpfun(.msharpeScreeningXYi)
   # cross-pair complete-case length (workers select by length)
   # only needed for the bootstrap test, and only for pairs passing 'minObs',
   # so that the asymptotic path never depends on 'bBoot'
-  pairLens <- crossprod(1 * (!is.na(X) & !is.nan(X)), 1 * (!is.na(Y) & !is.nan(Y)))
+  pairLens <- crossprod(1 * is.finite(X), 1 * is.finite(Y))
   bsids <- NULL
   if (ctr$type == 2) {
     bsids <- bootIndicesByLen(pairLens[pairLens >= ctr$minObs],
@@ -339,12 +349,13 @@ msharpeScreeningXYi <- compiler::cmpfun(.msharpeScreeningXYi)
   pi <- computePi(pval = pval, dalpha = dmsharpe, tstat = tstat,
                   lambda = ctr$lambda, nBoot = ctr$nBoot,
                   bpos = ctr$gammaPos, bneg = ctr$gammaNeg,
-                  fast = ctr$fastAdjust)
+                  fast = ctr$fastAdjust, minObsPi = ctr$minObsPi)
   info <- infoFund(X, level = level, na.neg = na.neg)
 
   out <- list(n = info$nObs, npeer = rowSums(!is.na(pval)), ny = nY,
               msharpe = info$msharpe, dmsharpe = dmsharpe, pval = pval,
               tstat = tstat, lambda = pi$lambda, pizero = pi$pizero,
+              gammaPos = ctr$gammaPos, gammaNeg = ctr$gammaNeg,
               pipos = pi$pipos, pineg = pi$pineg, cross = TRUE)
   class(out) <- "SCREENING"
   return(out)

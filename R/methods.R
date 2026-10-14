@@ -297,23 +297,27 @@ print.summary.SCREENING <- function(x, ...) {
 }
 
 #' @name confint.SCREENING
-#' @title Bootstrap confidence intervals for the peer performance ratios
-#' @description Computes confidence intervals for one of the peer performance
+#' @title Peer-bootstrap sensitivity intervals for the peer performance ratios
+#' @description Computes peer-bootstrap sensitivity intervals for one of the peer performance
 #' ratios (\eqn{\hat\pi^+}, \eqn{\hat\pi^0}, or \eqn{\hat\pi^-}) of a
 #' \code{SCREENING} object, by a nonparametric peer (pairwise) bootstrap: for
 #' each focal fund its peers are resampled with replacement and the ratio is
 #' recomputed from the stored pairwise p-values and test statistics. The
 #' interval therefore reflects the peer-composition and aggregation uncertainty,
-#' holding the individual pairwise test statistics fixed.
+#' holding the individual pairwise test statistics and the selected
+#' \eqn{\lambda} fixed. It does not include return-sampling or
+#' \eqn{\lambda}-selection uncertainty and should not be interpreted as a
+#' confidence interval with nominal coverage for the underlying population ratio.
 #' @param object A \code{SCREENING} object (within-group or cross-group; not
 #' \code{screen_beta}).
 #' @param parm Which ratio to bound: \code{"pipos"} (default), \code{"pizero"},
 #' or \code{"pineg"}.
-#' @param level Confidence level. Default: \code{0.95}.
+#' @param level Central peer-bootstrap interval level. Default: \code{0.95}.
 #' @param ... Unused.
 #' @param nBoot Number of bootstrap resamples. Default: \code{499}.
 #' @param gammaPos,gammaNeg One-sided thresholds used to recompute the ratios
-#' (should match those of the original screening). Defaults: \code{0.4},
+#' (should match those of the original screening). By default, the values are
+#' taken from \code{object}; for older objects the fallbacks are \code{0.4} and
 #' \code{0.6}.
 #' @return A matrix with one row per fund and two columns (lower and upper
 #' bounds); the point estimate is attached as attribute \code{"estimate"}.
@@ -331,9 +335,11 @@ print.summary.SCREENING <- function(x, ...) {
 #' @importFrom stats quantile
 confint.SCREENING <- function(object, parm = c("pipos", "pizero", "pineg"),
                               level = 0.95, ..., nBoot = 499L,
-                              gammaPos = 0.4, gammaNeg = 0.6) {
+                              gammaPos = NULL, gammaNeg = NULL) {
   parm <- match.arg(parm)
   est <- object[[parm]]
+  if (is.null(gammaPos)) gammaPos <- if (!is.null(object$gammaPos)) object$gammaPos else 0.4
+  if (is.null(gammaNeg)) gammaNeg <- if (!is.null(object$gammaNeg)) object$gammaNeg else 0.6
   if (is.matrix(est) || (!is.null(dim(est)) && length(dim(est)) > 1L)) {
     stop("confint is not supported for 'screen_beta' screenings")
   }
@@ -360,7 +366,8 @@ confint.SCREENING <- function(object, parm = c("pipos", "pizero", "pineg"),
     for (b in seq_len(nBoot)) {
       idx <- sample.int(n, n, replace = TRUE)
       pp <- computePi(pv[idx], dd[idx], ts[idx], lambda = lam,
-                      bpos = gammaPos, bneg = gammaNeg)
+                      bpos = gammaPos, bneg = gammaNeg,
+                      self = !isTRUE(object$cross))
       bs[b] <- pp[[parm]]
     }
     qs <- stats::quantile(bs, c(a, 1 - a), na.rm = TRUE, names = FALSE)
@@ -382,8 +389,8 @@ confint.SCREENING <- function(object, parm = c("pipos", "pizero", "pineg"),
 #' factor-by-factor heterogeneity measure of Ardia et al. (2023). For each
 #' coefficient \eqn{k} (the alpha and each factor beta) it reports the average
 #' equal-exposure ratio \eqn{\pi^0_k = \frac1N\sum_i \pi^0_{i,k}} and the
-#' heterogeneity \eqn{1-\pi^0_k}: the share of peers that are significantly
-#' differentiated on coefficient \eqn{k}. A value close to one indicates large
+#' heterogeneity \eqn{1-\pi^0_k}: the estimated share of peers with different
+#' coefficient \eqn{k}. A value close to one indicates large
 #' heterogeneity (much room to differentiate); close to zero, homogeneity.
 #' @param object A \code{SCREENING} object produced with
 #' \code{screen_beta = TRUE}.

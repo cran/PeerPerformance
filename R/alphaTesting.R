@@ -50,33 +50,34 @@
 
 	if (is.null(factors)) {
 		fit <- stats::lm(dXY ~ 1, na.action = stats::na.omit)
-		fitX <- stats::lm(X ~ 1, na.action = stats::na.omit)
-		fitY <- stats::lm(Y ~ 1, na.action = stats::na.omit)
+		fitX <- stats::lm(X ~ 1, subset = ok, na.action = stats::na.omit)
+		fitY <- stats::lm(Y ~ 1, subset = ok, na.action = stats::na.omit)
 	} else {
 		beta <- factors
 		fit <- stats::lm(dXY ~ 1 + beta, na.action = stats::na.omit)
-		fitX <- stats::lm(X ~ 1 + beta, na.action = stats::na.omit)
-		fitY <- stats::lm(Y ~ 1 + beta, na.action = stats::na.omit)
+		fitX <- stats::lm(X ~ 1 + beta, subset = ok, na.action = stats::na.omit)
+		fitY <- stats::lm(Y ~ 1 + beta, subset = ok, na.action = stats::na.omit)
 	} # end of factors/no factors
 
-	# HAC within loop.
+	# HAC within loop. Coefficient tables are padded by name so that a factor
+	# the design cannot estimate (collinear or constant) stays NA in its own
+	# slot instead of shifting the remaining rows or running off the end.
 	if (!hac) {
-		sumfit <- summary(fit)
-		sumfitX <- summary(fitX)
-		sumfitY <- summary(fitY)
-		alpha <- cbind(sumfitX$coef[row_return,1], sumfitY$coef[row_return,1])
-		pval <- sumfit$coef[row_return, 4]
-		dalpha <- sumfit$coef[row_return, 1]
-		tstat <- sumfit$coef[row_return, 3]
+		sm  <- .padCoef(summary(fit)$coef,  stats::coef(fit))
+		smX <- .padCoef(summary(fitX)$coef, stats::coef(fitX))
+		smY <- .padCoef(summary(fitY)$coef, stats::coef(fitY))
 	} else {
-		sumfit <- lmtest::coeftest(fit, vcov. = sandwich::vcovHAC(fit))
-		sumfitX <- lmtest::coeftest(fitX, vcov. = sandwich::vcovHAC(fitX))
-		sumfitY <- lmtest::coeftest(fitY, vcov. = sandwich::vcovHAC(fitY))
-		alpha <- cbind(sumfitX[row_return,1], sumfitY[row_return,1])
-		pval <- sumfit[row_return, 4]
-		dalpha <- sumfit[row_return, 1]
-		tstat <- sumfit[row_return, 3]
+		sm  <- .padCoef(lmtest::coeftest(fit,  vcov. = sandwich::vcovHAC(fit)),
+		                stats::coef(fit))
+		smX <- .padCoef(lmtest::coeftest(fitX, vcov. = sandwich::vcovHAC(fitX)),
+		                stats::coef(fitX))
+		smY <- .padCoef(lmtest::coeftest(fitY, vcov. = sandwich::vcovHAC(fitY)),
+		                stats::coef(fitY))
 	}
+	alpha  <- cbind(smX[row_return, 1], smY[row_return, 1])
+	pval   <- sm[row_return, 4]
+	dalpha <- sm[row_return, 1]
+	tstat  <- sm[row_return, 3]
 
 	out <- list(n = nObs,
 				alpha = alpha,

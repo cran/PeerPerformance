@@ -7,11 +7,11 @@ bibentry(bibtype = "Manual",
               person(c("Murilo", "Andre", "Peres"), "Pereira"),
               person("Benjamin", "Seguin")),
   year    = "2026",
-  note    = "R package version 2.4.0",
+  note    = "R package version 2.4.1",
   url     = "https://CRAN.R-project.org/package=PeerPerformance",
   textVersion = paste("Ardia, D., Boudt, K., Peres Pereira, M. A., Seguin, B. (2026).",
     "PeerPerformance: Luck-Corrected Peer Performance Analysis in R.",
-    "R package version 2.4.0.",
+    "R package version 2.4.1.",
     "https://CRAN.R-project.org/package=PeerPerformance")
 )
 

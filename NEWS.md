@@ -1,3 +1,63 @@
+# Version 2.4.1 (DA)
+- Corrected the centring of the studentized bootstrap in `sharpeTesting()` and
+  `msharpeTesting()`. Both replaced the observed difference by
+  `Δ̂ - d` and then centred the bootstrap draws on that quantity, so the
+  reference distribution was shifted by the hypothesised value `d` instead of
+  being centred on the estimate. The test statistic itself was correct, so the
+  default `d = 0` was never affected; but the automatic block-length selectors
+  pass the observed difference as `d`, so every rejection rate in their
+  calibration loop was computed from a mis-centred distribution and
+  `bBoot = 0` returned an essentially arbitrary block length. The draws are now
+  centred on the estimate
+- The bias correction of the true-null proportion is scaled by the number of
+  valid comparisons rather than by the number of columns. Appending peer columns
+  that were entirely missing changed the estimate even though the valid
+  comparisons were identical. A within-universe screening now appends a single
+  placeholder so that the published convention of Ardia and Boudt (2018) is
+  preserved in the correction without counting unavailable peers
+- `minObsPi` is enforced on each focal fund's final count of valid peers, in the
+  cross-group path as well as the within-group one; cross-group screening
+  previously ignored it, and unbalanced panels could give results that depended
+  on the order of the columns
+- `alphaTesting()` estimates both reported alphas on the same concordant sample
+  as the difference it tests. They were previously fitted on each fund's own
+  available observations, so the two reported alphas need not have differed by
+  the reported `dalpha`
+- `dsharpe` and `dmsharpe` hold raw ratio differences in all screening paths.
+  With the default `ttype = 2` the screenings stored the cross-multiplied
+  statistic under a field named as a difference, while the pairwise tests
+  returned the raw difference -- the same name meant two different things. The
+  tests continue to use the product statistic internally
+- Fixed the circular block bootstrap when the block length does not divide the
+  number of concordant observations. `bootIndices()` drew `floor(T / bBoot)`
+  blocks, so the last `T %% bBoot` indices of every bootstrap sample kept their
+  initial value of zero; because the callers remap indices with
+  `1 + ids %% T`, each of those zeros silently selected the first observation.
+  At `T = 50` and `bBoot = 6` this over-sampled observation 1 by a factor of
+  about three and biased the bootstrap null distribution, with no error or
+  `NA` to signal it. The routine now draws `ceiling(T / bBoot)` blocks and
+  keeps the first `T` indices. Results are unchanged when `bBoot` divides `T`,
+  and the default `bBoot = 1` was never affected
+- A fund with no usable observation no longer aborts a screening: `infoFund()`
+  called `lm()` on every column, so an all-`NA` fund stopped the whole run with
+  "0 (non-NA) cases" even though the pairwise stage handles such a column
+  correctly. Its summary statistics are now returned as `NA`
+- Non-finite returns are treated as missing. The missingness masks tested only
+  `is.na()` and `is.nan()`, so an `Inf` counted as an observation and the fit
+  then failed with "NA/NaN/Inf in 'y'". `Inf` and `NaN` are now normalised to
+  `NA` on entry, and a series containing one gives exactly the result it would
+  give with `NA` in the same position
+- `bBoot = 0` (data-driven block length) works on series containing `NA` in
+  `sharpeTesting()` and `msharpeTesting()`: the block-length routines were
+  passed the raw series rather than the concordant observations the test
+  itself uses, so they returned `NA` and the bootstrap then failed with a
+  subscript error
+- A factor set the design cannot fully estimate (collinear or constant
+  factors) no longer aborts `screen_beta` screening or `alphaTesting()`.
+  `summary(lm)` omits inestimable coefficients, so indexing its table by
+  position over-ran it and could read a neighbouring coefficient; coefficients
+  are now matched by name and inestimable ones are reported as `NA`
+
 # Version 2.4.0 (DA)
 - New optional `control$fastAdjust` (default `FALSE`): the truncated-normal
   bias correction of `pi0` inverts its monotone map for the whole vector at
